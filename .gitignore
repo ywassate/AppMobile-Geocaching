@@ -1,0 +1,7 @@
+# Ignorer les dépendances Node.js
+node_modules/
+client/node_modules/
+serveur/node_modules/
+
+serveur/uploads/
+serveur/test_results_*.log

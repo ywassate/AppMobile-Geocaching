@@ -1,4 +1,6 @@
+//config/jwt.js
+
 module.exports = {
-  secret: 'votre_cle_secrete', // à remplacer par une clé forte et à stocker dans un .env
+  secret: 'votre_cle_secrete', 
   expiresIn: '24h'
 };

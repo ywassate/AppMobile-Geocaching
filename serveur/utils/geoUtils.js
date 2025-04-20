@@ -1,3 +1,5 @@
+//utils/geoUtils.js
+
 // Calcule la distance en kilomètres entre deux coordonnées GPS
 exports.calculateDistance = (lat1, lng1, lat2, lng2) => {
   const R = 6371; // Rayon de la Terre en km

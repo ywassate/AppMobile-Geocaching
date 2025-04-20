@@ -1,0 +1,71 @@
+🔐 Connexion ou création des utilisateurs...
+🪪 TOKEN1 = null
+🪪 TOKEN2 = null
+🆔 CACHE_ID = null
+\n🔍 Test : Token expiré
+⚠️ Test Token expiré : à tester manuellement (besoin d'un token généré avec expiresIn = 1s)
+\n🔍 Test : Token falsifié
+{
+  "msg": "Token manquant ou mal formé"
+}
+\n🔍 Test : Injection JSON
+{
+  "msg": "Token manquant ou mal formé"
+}
+\n🔍 Test : Suppression par un autre utilisateur
+{
+  "msg": "Token manquant ou mal formé"
+}
+\n🔍 Test : Accès cache introuvable
+parse error: Invalid numeric literal at line 1, column 10
+\n🔍 Test : Multi-utilisateurs
+👥 Vérification : user1 et user2 ont bien des tokens séparés...
+TOKEN1: null
+TOKEN2: null
+\n🔍 Test : Hash avec même mot de passe
+🔒 Vérifie dans la base Mongo que les hash des users user1 et user2 sont différents (manuellement dans Compass ou via find)
+\n🔍 Test : Connexion brute force
+{
+  "msg": "Mot de passe incorrect"
+}
+{
+  "msg": "Mot de passe incorrect"
+}
+{
+  "msg": "Mot de passe incorrect"
+}
+\n🔍 Test : Filtrage géographique
+📍 À implémenter côté backend avec distance et filtre (Haversine ou )
+\n🔍 Test : Valeurs invalides
+{
+  "msg": "Token manquant ou mal formé"
+}
+\n🔍 Test : Payload énorme
+{
+  "msg": "Token manquant ou mal formé"
+}
+\n🔍 Test : Pagination
+{
+  "msg": "Token manquant ou mal formé"
+}
+\n🔍 Test : Suppression en masse
+jq: error (at <stdin>:0): Cannot index string with string "_id"
+🗑️ Toutes les caches supprimées pour user1.
+\n🔍 Test : Mise à jour partielle
+{
+  "msg": "Token manquant ou mal formé"
+}
+\n🔍 Test : Voir les commentaires
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100    38  100    38    0     0  48655      0 --:--:-- --:--:-- --:--:-- 38000
+{
+  "msg": "Token manquant ou mal formé"
+}
+\n🔍 Test : Suppression du commentaire
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100    38  100    38    0     0  47146      0 --:--:-- --:--:-- --:--:-- 38000
+{
+  "msg": "Token manquant ou mal formé"
+}

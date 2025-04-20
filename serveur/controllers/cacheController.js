@@ -1,30 +1,126 @@
+// controllers/cacheController.js
+
 const { getDB } = require('../config/db');
 const { ObjectId } = require('mongodb');
 
+// Créer une nouvelle cache
 exports.createCache = async (req, res) => {
   const db = getDB();
   const caches = db.collection('caches');
 
   const { lat, lng, difficulty, description } = req.body;
+
   const newCache = {
-    coordinates: { lat, lng },
+    coordinates: { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] },
     difficulty,
     description,
-    creator: new ObjectId(req.user.id)
+    creator: new ObjectId(String(req.user.id)),
+    logs: []
   };
 
   const result = await caches.insertOne(newCache);
   res.status(201).json({ ...newCache, _id: result.insertedId });
 };
 
+
 exports.getCaches = async (req, res) => {
+  const db = getDB();
+  try {
+    const caches = await db.collection('caches').aggregate([
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'creator',
+          foreignField: '_id',
+          as: 'creator'
+        }
+      },
+      { $unwind: '$creator' },
+      {
+        $project: {
+          description: 1,
+          difficulty: 1,
+          coordinates: 1,
+          logs: 1,
+          creator: {
+            email: '$creator.email',
+            username: '$creator.username',
+            _id: '$creator._id'
+          }
+        }
+      }
+    ]).toArray();
+
+    res.json(caches);
+  } catch (err) {
+    console.error('Erreur récupération caches avec créateurs :', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+};
+
+
+// Récupérer les caches à proximité
+exports.getCachesNearby = async (req, res) => {
+  const db = getDB();
+  const caches = db.collection('caches');
+  const { lat, lon, radius = 10 } = req.query;
+
+  if (!lat || !lon) {
+    return res.status(400).json({ msg: 'Coordonnées lat et lon requises' });
+  }
+
+  const nearbyCaches = await caches.find({
+    coordinates: {
+      $near: {
+        $geometry: { type: "Point", coordinates: [parseFloat(lon), parseFloat(lat)] },
+        $maxDistance: parseFloat(radius) * 1000
+      }
+    }
+  }).toArray();
+
+  res.json(nearbyCaches);
+};
+
+// Récupérer les caches trouvées par l'utilisateur connecté
+exports.getCachesFoundByUser = async (req, res) => {
   const db = getDB();
   const caches = db.collection('caches');
 
-  const allCaches = await caches.find().toArray();
-  res.json(allCaches);
+  const foundCaches = await caches.find({
+    logs: { $elemMatch: { user: new ObjectId(String(req.user.id)), found: true } }
+  }).toArray();
+
+  res.json(foundCaches);
 };
 
+// Ajouter un log/commentaire à une cache (trouvée ou non)
+exports.addCacheLog = async (req, res) => {
+  const db = getDB();
+  const caches = db.collection('caches');
+
+  const { cacheId } = req.params;
+  const { found, comment } = req.body;
+
+  if (typeof found !== 'boolean') {
+    return res.status(400).json({ msg: '`found` doit être un booléen' });
+  }
+
+  const logEntry = {
+    user: new ObjectId(String(req.user.id)),
+    found,
+    comment,
+    date: new Date()
+  };
+
+  await caches.updateOne(
+    { _id: new ObjectId(String(cacheId)) },
+    { $push: { logs: logEntry } }
+  );
+
+  res.status(201).json({ msg: "Log ajouté avec succès" });
+};
+
+// Mettre à jour une cache existante
 exports.updateCache = async (req, res) => {
   const db = getDB();
   const caches = db.collection('caches');
@@ -32,36 +128,40 @@ exports.updateCache = async (req, res) => {
   const { id } = req.params;
   const { lat, lng, difficulty, description } = req.body;
 
-  const cache = await caches.findOne({ _id: new ObjectId(id) });
+  const cache = await caches.findOne({ _id: new ObjectId(String(id)) });
   if (!cache) return res.status(404).json({ msg: 'Cache non trouvée' });
 
   if (cache.creator.toString() !== req.user.id) {
     return res.status(403).json({ msg: 'Non autorisé' });
   }
 
-  const updateFields = {};
-  if (lat !== undefined) updateFields['coordinates.lat'] = lat;
-  if (lng !== undefined) updateFields['coordinates.lng'] = lng;
-  if (difficulty !== undefined) updateFields.difficulty = difficulty;
-  if (description !== undefined) updateFields.description = description;
+  const updates = {};
+  if (lat !== undefined && lng !== undefined) {
+    updates.coordinates = { type: "Point", coordinates: [parseFloat(lng), parseFloat(lat)] };
+  }
+  if (difficulty !== undefined) updates.difficulty = difficulty;
+  if (description !== undefined) updates.description = description;
 
-  await caches.updateOne({ _id: new ObjectId(id) }, { $set: updateFields });
-  const updated = await caches.findOne({ _id: new ObjectId(id) });
-  res.json(updated);
+  await caches.updateOne({ _id: new ObjectId(String(id)) }, { $set: updates });
+
+  const updatedCache = await caches.findOne({ _id: new ObjectId(String(id)) });
+  res.json(updatedCache);
 };
 
+// Supprimer une cache
 exports.deleteCache = async (req, res) => {
   const db = getDB();
   const caches = db.collection('caches');
+
   const { id } = req.params;
 
-  const cache = await caches.findOne({ _id: new ObjectId(id) });
+  const cache = await caches.findOne({ _id: new ObjectId(String(id)) });
   if (!cache) return res.status(404).json({ msg: 'Cache non trouvée' });
 
   if (cache.creator.toString() !== req.user.id) {
     return res.status(403).json({ msg: 'Non autorisé' });
   }
 
-  await caches.deleteOne({ _id: new ObjectId(id) });
-  res.json({ msg: 'Cache supprimée' });
+  await caches.deleteOne({ _id: new ObjectId(String(id)) });
+  res.json({ msg: 'Cache supprimée avec succès' });
 };

@@ -3,16 +3,25 @@ const router = express.Router();
 const cacheController = require('../controllers/cacheController');
 const authMiddleware = require('../middleware/auth');
 
-// Créer une nouvelle cache
+// Créer une cache
 router.post('/', authMiddleware, cacheController.createCache);
 
-// Récupérer toutes les caches (le filtrage par proximité peut être géré dans le controller)
+// Récupérer toutes les caches
 router.get('/', authMiddleware, cacheController.getCaches);
 
-// Mettre à jour une cache existante
+// Récupérer caches proches
+router.get('/nearby', authMiddleware, cacheController.getCachesNearby);
+
+// Caches trouvées par utilisateur
+router.get('/found', authMiddleware, cacheController.getCachesFoundByUser);
+
+// Ajouter log (trouvée/non trouvée + commentaire)
+router.post('/:cacheId/logs', authMiddleware, cacheController.addCacheLog);
+
+// Modifier cache
 router.put('/:id', authMiddleware, cacheController.updateCache);
 
-// Supprimer une cache
+// Supprimer cache
 router.delete('/:id', authMiddleware, cacheController.deleteCache);
 
 module.exports = router;
