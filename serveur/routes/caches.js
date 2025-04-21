@@ -21,6 +21,9 @@ router.post('/:cacheId/logs', authMiddleware, cacheController.addCacheLog);
 // Modifier cache
 router.put('/:id', authMiddleware, cacheController.updateCache);
 
+// Caches créées par l'utilisateur connecté
+router.get('/my-caches', authMiddleware, cacheController.getMyCaches);
+
 // Supprimer cache
 router.delete('/:id', authMiddleware, cacheController.deleteCache);
 

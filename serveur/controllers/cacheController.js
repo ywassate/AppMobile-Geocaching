@@ -84,13 +84,55 @@ exports.getCachesNearby = async (req, res) => {
 // Récupérer les caches trouvées par l'utilisateur connecté
 exports.getCachesFoundByUser = async (req, res) => {
   const db = getDB();
-  const caches = db.collection('caches');
+  try {
+    // Utilisez une agrégation pour enrichir les données et garder le même format que getCaches
+    const foundCaches = await db.collection('caches').aggregate([
+      // Filtrer d'abord les caches que l'utilisateur a trouvées
+      {
+        $match: {
+          logs: { 
+            $elemMatch: { 
+              user: new ObjectId(String(req.user.id)), 
+              found: true 
+            } 
+          }
+        }
+      },
+      // Joindre les informations du créateur
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'creator',
+          foreignField: '_id',
+          as: 'creator'
+        }
+      },
+      { $unwind: '$creator' },
+      // Ajouter un champ found à true pour l'affichage fronted
+      { $addFields: { found: true } },
+      // Projeter les mêmes champs que getCaches
+      {
+        $project: {
+          description: 1,
+          difficulty: 1,
+          coordinates: 1,
+          logs: 1,
+          found: 1,
+          creator: {
+            email: '$creator.email',
+            username: '$creator.username',
+            _id: '$creator._id'
+          }
+        }
+      }
+    ]).toArray();
 
-  const foundCaches = await caches.find({
-    logs: { $elemMatch: { user: new ObjectId(String(req.user.id)), found: true } }
-  }).toArray();
-
-  res.json(foundCaches);
+    console.log(`Found ${foundCaches.length} caches for user ${req.user.id}`);
+    res.json(foundCaches);
+  } catch (err) {
+    console.error('Erreur récupération caches trouvées :', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
 };
 
 // Ajouter un log/commentaire à une cache (trouvée ou non)
@@ -147,6 +189,58 @@ exports.updateCache = async (req, res) => {
   const updatedCache = await caches.findOne({ _id: new ObjectId(String(id)) });
   res.json(updatedCache);
 };
+
+
+
+
+
+// Récupérer les caches créées par l'utilisateur connecté
+exports.getMyCaches = async (req, res) => {
+  const db = getDB();
+  try {
+    const myCaches = await db.collection('caches').aggregate([
+      // Filtrer d'abord les caches créées par l'utilisateur
+      {
+        $match: {
+          creator: new ObjectId(String(req.user.id))
+        }
+      },
+      // Joindre les informations du créateur
+      {
+        $lookup: {
+          from: 'users',
+          localField: 'creator',
+          foreignField: '_id',
+          as: 'creator'
+        }
+      },
+      { $unwind: '$creator' },
+      // Projeter les mêmes champs que getCaches
+      {
+        $project: {
+          description: 1,
+          difficulty: 1,
+          coordinates: 1,
+          logs: 1,
+          creator: {
+            email: '$creator.email',
+            username: '$creator.username',
+            _id: '$creator._id'
+          }
+        }
+      }
+    ]).toArray();
+
+    console.log(`Found ${myCaches.length} caches created by user ${req.user.id}`);
+    res.json(myCaches);
+  } catch (err) {
+    console.error('Erreur récupération mes caches :', err);
+    res.status(500).json({ message: 'Erreur serveur' });
+  }
+};
+
+
+
 
 // Supprimer une cache
 exports.deleteCache = async (req, res) => {

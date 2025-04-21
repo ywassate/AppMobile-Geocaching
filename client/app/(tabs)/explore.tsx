@@ -1,12 +1,14 @@
 // app/(tabs)/explore.tsx
 
 import { useEffect, useState, useRef } from 'react';
-import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity, Modal, Animated, Button, ScrollView } from 'react-native';
-import MapView, { Marker, Region } from 'react-native-maps';
+import { View, ActivityIndicator, StyleSheet, Text, TouchableOpacity, Modal, Animated, Button, ScrollView, Alert } from 'react-native';
+import MapView, { Marker, Region, Circle } from 'react-native-maps';
 import { getToken, getUserEmail } from '../../hooks/useToken';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { API_URL } from '../../constants/api';
+import { Ionicons } from '@expo/vector-icons';
+import * as Location from 'expo-location';
 
 console.log('🔁 ExploreScreen chargé');
 
@@ -23,6 +25,7 @@ type Geocache = {
     _id: string;
   };
   found?: boolean;
+  distance?: number; // Pour stocker la distance par rapport à l'utilisateur
 };
 
 export default function ExploreScreen() {
@@ -32,6 +35,9 @@ export default function ExploreScreen() {
   const [selectedCache, setSelectedCache] = useState<Geocache | null>(null);
   const [showCongrats, setShowCongrats] = useState(false);
   const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [userLocation, setUserLocation] = useState<{latitude: number, longitude: number} | null>(null);
+  const [locationPermission, setLocationPermission] = useState(false);
+  const [nearbyCaches, setNearbyCaches] = useState<Geocache[]>([]);
 
   const router = useRouter();
   const { lat, lng } = useLocalSearchParams();
@@ -49,6 +55,18 @@ export default function ExploreScreen() {
     latitudeDelta: 0.01,
     longitudeDelta: 0.01,
   });
+
+  // Demander la permission de localisation au chargement
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      setLocationPermission(status === 'granted');
+      
+      if (status === 'granted') {
+        await getCurrentLocation();
+      }
+    })();
+  }, []);
 
   async function fetchCaches(): Promise<void> {
     const token = await getToken();
@@ -76,6 +94,11 @@ export default function ExploreScreen() {
 
       setCaches(enriched);
 
+      // Si l'utilisateur a partagé sa position, calculer les caches à proximité
+      if (userLocation) {
+        filterNearbyCaches(enriched, userLocation);
+      }
+
       if (lat && lng) {
         const targetLat = parseFloat(lat as string);
         const targetLng = parseFloat(lng as string);
@@ -97,7 +120,7 @@ export default function ExploreScreen() {
 
   useEffect(() => {
     fetchCaches();
-  }, [lat, lng]);
+  }, [lat, lng, userLocation]);
 
   const handleZoom = (factor: number) => {
     const newRegion = {
@@ -107,6 +130,71 @@ export default function ExploreScreen() {
     };
     setRegion(newRegion);
     mapRef.current?.animateToRegion(newRegion, 200);
+  };
+
+  // Obtenir la position actuelle de l'utilisateur
+  const getCurrentLocation = async () => {
+    try {
+      const location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Highest,
+      });
+      
+      const { latitude, longitude } = location.coords;
+      setUserLocation({ latitude, longitude });
+      
+      // Centrer la carte sur la position de l'utilisateur
+      const newRegion = {
+        latitude,
+        longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      };
+      
+      setRegion(newRegion);
+      mapRef.current?.animateToRegion(newRegion, 1000);
+      
+      // Filtrer les caches à proximité
+      if (caches.length > 0) {
+        filterNearbyCaches(caches, { latitude, longitude });
+      }
+    } catch (error) {
+      console.error('Erreur de géolocalisation:', error);
+      Alert.alert('Erreur', 'Impossible d\'obtenir votre position actuelle.');
+    }
+  };
+  
+  // Filtrer les caches dans un rayon de 5km
+  const filterNearbyCaches = (allCaches: Geocache[], location: {latitude: number, longitude: number}) => {
+    const RADIUS_KM = 5; // 5 kilomètres
+    
+    const nearby = allCaches.filter(cache => {
+      if (!cache.coordinates || !Array.isArray(cache.coordinates.coordinates)) return false;
+      const [lng, lat] = cache.coordinates.coordinates;
+      if (typeof lat !== 'number' || typeof lng !== 'number') return false;
+      
+      // Calcul de la distance (formule Haversine simplifiée)
+      const lat1 = location.latitude;
+      const lon1 = location.longitude;
+      const lat2 = lat;
+      const lon2 = lng;
+      
+      const R = 6371; // Rayon de la Terre en km
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = 
+        Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+        Math.sin(dLon/2) * Math.sin(dLon/2); 
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); 
+      const distance = R * c;
+      
+      // Ajouter la distance à la cache
+      cache.distance = distance;
+      
+      return distance <= RADIUS_KM;
+    });
+    
+    setNearbyCaches(nearby);
   };
 
   const showSuccessPopup = () => {
@@ -129,7 +217,6 @@ export default function ExploreScreen() {
     });
   };
   
-
   const handleMarkFound = async (cacheId: string) => {
     const token = await getToken();
     try {
@@ -163,21 +250,41 @@ export default function ExploreScreen() {
         style={styles.map}
         region={region}
         onRegionChangeComplete={(r) => setRegion(r)}
+        showsUserLocation={locationPermission}
       >
         {caches.map((cache) => {
           if (!cache.coordinates || !Array.isArray(cache.coordinates.coordinates)) return null;
           const [lng, lat] = cache.coordinates.coordinates;
           if (typeof lat !== 'number' || typeof lng !== 'number') return null;
 
+          // Déterminer la couleur du marqueur en fonction de son statut
+          let pinColor = 'red';
+          if (cache.found) {
+            pinColor = 'green';
+          } else if (nearbyCaches.includes(cache)) {
+            pinColor = 'orange'; // Les caches à proximité non trouvées sont orange
+          }
+
           return (
             <Marker
               key={cache._id}
               coordinate={{ latitude: lat, longitude: lng }}
-              pinColor={cache.found ? 'green' : 'red'}
+              pinColor={pinColor}
               onPress={() => setSelectedCache(cache)}
             />
           );
         })}
+        
+        {/* Afficher le rayon de 5km autour de l'utilisateur */}
+        {userLocation && (
+          <Circle 
+            center={userLocation}
+            radius={5000} // 5km en mètres
+            strokeWidth={1}
+            strokeColor="rgba(78, 115, 223, 0.5)"
+            fillColor="rgba(78, 115, 223, 0.1)"
+          />
+        )}
       </MapView>
 
       <View style={styles.zoomButtons}>
@@ -188,6 +295,24 @@ export default function ExploreScreen() {
           <Text style={styles.zoomText}>−</Text>
         </TouchableOpacity>
       </View>
+      
+      {/* Bouton "Me localiser" */}
+      <TouchableOpacity 
+        style={styles.locateButton} 
+        onPress={getCurrentLocation}
+      >
+        <Ionicons name="locate" size={24} color="#4e73df" />
+      </TouchableOpacity>
+      
+      {/* Indicateur du nombre de caches à proximité */}
+      {userLocation && nearbyCaches.length > 0 && (
+        <View style={styles.nearbyIndicator}>
+          <Ionicons name="pin" size={16} color="#fff" />
+          <Text style={styles.nearbyText}>
+            {nearbyCaches.length} cache{nearbyCaches.length !== 1 ? 's' : ''} à proximité
+          </Text>
+        </View>
+      )}
 
       <Modal transparent visible={showCongrats}>
         <View style={styles.modalContainer}>
@@ -204,6 +329,13 @@ export default function ExploreScreen() {
             <Text style={styles.title}>{selectedCache?.description || 'Géocache'}</Text>
             <Text>Difficulté : {selectedCache?.difficulty}</Text>
             <Text>Créée par : {selectedCache?.creator?.email || selectedCache?.creator?.username}</Text>
+            
+            {/* Afficher la distance si disponible */}
+            {selectedCache?.distance && (
+              <Text style={styles.distanceText}>
+                Distance : {selectedCache.distance.toFixed(2)} km
+              </Text>
+            )}
 
             <View style={{ marginTop: 10 }}>
               <Button title="Commenter" color="#4e73df" onPress={() => {
@@ -305,4 +437,37 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   title: { fontWeight: 'bold', fontSize: 18, marginBottom: 10 },
+  locateButton: {
+    position: 'absolute',
+    bottom: 160,
+    right: 10,
+    backgroundColor: 'white',
+    padding: 12,
+    borderRadius: 30,
+    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+  },
+  nearbyIndicator: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    backgroundColor: 'rgba(78, 115, 223, 0.8)',
+    padding: 8,
+    borderRadius: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  nearbyText: {
+    color: 'white',
+    marginLeft: 5,
+    fontWeight: 'bold',
+  },
+  distanceText: {
+    marginTop: 5,
+    color: '#4e73df',
+    fontWeight: '500',
+  },
 });

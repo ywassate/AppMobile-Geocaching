@@ -1,110 +1,320 @@
+// app/comments/[cacheId].tsx
 import { useEffect, useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, FlatList, Alert } from 'react-native';
+import { View, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, Text } from 'react-native';
+import { Card, Avatar, Button } from 'react-native-paper';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getToken } from '../../hooks/useToken';
 import { API_URL } from '../../constants/api';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-type Log = {
-  user?: { email: string };
-  comment: string;
-  found: boolean;
-  date: string;
+type Comment = {
+  _id: string;
+  user: {
+    username?: string;
+    email?: string;
+  };
+  text: string;
+  createdAt: string;
 };
 
-export default function CommentsPage() {
-  const { id } = useLocalSearchParams();
-  const [logs, setLogs] = useState<Log[]>([]);
+export default function CommentsScreen() {
+  const { cacheId } = useLocalSearchParams();
+  const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  const fetchLogs = async () => {
+  useEffect(() => {
+    fetchComments();
+  }, [cacheId]);
+
+  const fetchComments = async () => {
+    if (!cacheId) return;
+    
+    setLoading(true);
+    setError(null);
+    
     const token = await getToken();
+    if (!token) {
+      setError("Vous devez être connecté pour voir les commentaires");
+      setLoading(false);
+      return;
+    }
+
     try {
-      const res = await fetch(`${API_URL}/api/caches/${id}/logs`, {
-        headers: { Authorization: `Bearer ${token}` },
+      console.log(`Chargement des commentaires pour la cache: ${cacheId}`);
+      
+      const response = await fetch(`${API_URL}/api/caches/${cacheId}/logs`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
-      const data = await res.json();
-      setLogs(data);
+
+      // Debug
+      const textResponse = await response.text();
+      console.log("Réponse brute:", textResponse);
+      
+      let data;
+      try {
+        // Tentative de parser la réponse comme JSON
+        data = JSON.parse(textResponse);
+      } catch (parseError) {
+        console.error("Erreur de parsing JSON:", parseError);
+        setError(`Réponse invalide du serveur: ${textResponse.substring(0, 100)}...`);
+        setLoading(false);
+        return;
+      }
+
+      if (!response.ok) {
+        setError(data.message || "Erreur lors du chargement des commentaires");
+        setLoading(false);
+        return;
+      }
+
+      // Verification que data est un tableau
+      if (!Array.isArray(data)) {
+        console.error("Les données reçues ne sont pas un tableau:", data);
+        setError("Format de données incorrect");
+        setLoading(false);
+        return;
+      }
+
+      setComments(data);
+      setError(null);
     } catch (err) {
-      console.error('Erreur chargement logs :', err);
+      console.error("Erreur réseau:", err);
+      setError("Impossible de se connecter au serveur");
+    } finally {
+      setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchLogs();
-  }, []);
-
-  const handleAddComment = async () => {
+  const addComment = async () => {
     if (!newComment.trim()) return;
-
+    
+    setSubmitting(true);
+    setError(null);
+    
     const token = await getToken();
+    if (!token) {
+      Alert.alert('Erreur', 'Vous devez être connecté pour ajouter un commentaire');
+      setSubmitting(false);
+      return;
+    }
+
     try {
-      const res = await fetch(`${API_URL}/api/caches/${id}/logs`, {
+      const response = await fetch(`${API_URL}/api/caches/${cacheId}/logs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ comment: newComment, found: false }),
+        body: JSON.stringify({
+          text: newComment,
+          found: false // Commentaire simple, pas un marquage comme trouvé
+        }),
       });
 
-      if (!res.ok) {
-        Alert.alert('Erreur', 'Impossible d’ajouter le commentaire');
+      const textResponse = await response.text();
+      console.log("Réponse d'ajout de commentaire:", textResponse);
+      
+      let data;
+      try {
+        data = JSON.parse(textResponse);
+      } catch (parseError) {
+        console.error("Erreur de parsing JSON:", parseError);
+        setError(`Réponse invalide du serveur: ${textResponse.substring(0, 100)}...`);
+        setSubmitting(false);
+        return;
+      }
+
+      if (!response.ok) {
+        setError(data.message || "Erreur lors de l'ajout du commentaire");
+        setSubmitting(false);
         return;
       }
 
       setNewComment('');
-      fetchLogs();
+      fetchComments(); // Rafraîchir la liste des commentaires
     } catch (err) {
-      console.error('Erreur ajout commentaire :', err);
+      console.error("Erreur réseau:", err);
+      setError("Impossible de se connecter au serveur");
+    } finally {
+      setSubmitting(false);
     }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleString();
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Commentaires</Text>
+      <View style={styles.header}>
+        <Text style={styles.title}>Commentaires</Text>
+        {cacheId && <Text style={styles.subtitle}>Cache #{cacheId}</Text>}
+      </View>
 
-      <FlatList
-        data={logs}
-        keyExtractor={(_, index) => index.toString()}
-        renderItem={({ item }) => (
-          <View style={styles.comment}>
-            <Text style={styles.author}>{item.user?.email || 'Utilisateur inconnu'}</Text>
-            <Text>{item.comment}</Text>
-            <Text style={styles.date}>{new Date(item.date).toLocaleString()}</Text>
-          </View>
-        )}
-      />
+      {loading ? (
+        <ActivityIndicator size="large" style={styles.loader} />
+      ) : error ? (
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorText}>{error}</Text>
+          <Button mode="contained" onPress={fetchComments} style={styles.retryButton}>
+            Réessayer
+          </Button>
+        </View>
+      ) : (
+        <FlatList
+          data={comments}
+          keyExtractor={(item) => item._id}
+          renderItem={({ item }) => (
+            <Card style={styles.commentCard}>
+              <Card.Content>
+                <View style={styles.commentHeader}>
+                  <Avatar.Icon size={36} icon="account" style={styles.avatar} />
+                  <View>
+                    <Text style={styles.username}>{item.user?.username || item.user?.email || 'Utilisateur'}</Text>
+                    <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
+                  </View>
+                </View>
+                <Text style={styles.commentText}>{item.text}</Text>
+              </Card.Content>
+            </Card>
+          )}
+          contentContainerStyle={styles.commentsList}
+          ListEmptyComponent={
+            <View style={styles.emptyState}>
+              <Text style={styles.emptyText}>Aucun commentaire pour cette cache</Text>
+            </View>
+          }
+        />
+      )}
 
-      <TextInput
-        style={styles.input}
-        placeholder="Ajouter un commentaire"
-        value={newComment}
-        onChangeText={setNewComment}
-      />
-      <Button title="Envoyer" onPress={handleAddComment} />
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          placeholder="Ajouter un commentaire"
+          value={newComment}
+          onChangeText={setNewComment}
+          multiline
+        />
+        <TouchableOpacity
+          style={[styles.sendButton, (!newComment.trim() || submitting) && styles.sendButtonDisabled]}
+          onPress={addComment}
+          disabled={!newComment.trim() || submitting}
+        >
+          <Text style={styles.sendButtonText}>
+            {submitting ? 'Envoi...' : 'Envoyer'}
+          </Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 20 },
-  title: { fontSize: 20, fontWeight: 'bold', marginBottom: 10 },
-  comment: {
-    marginBottom: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#ccc',
-    paddingBottom: 10,
+  container: {
+    flex: 1,
+    backgroundColor: '#f8f9fc',
   },
-  author: { fontWeight: '600', marginBottom: 2 },
-  date: { fontSize: 12, color: '#999', marginTop: 2 },
+  header: {
+    padding: 16,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e3e6f0',
+  },
+  title: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: '#4e73df',
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#858796',
+    marginTop: 4,
+  },
+  loader: {
+    marginTop: 40,
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  errorText: {
+    color: '#e74a3b',
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  retryButton: {
+    backgroundColor: '#4e73df',
+  },
+  commentsList: {
+    padding: 16,
+  },
+  commentCard: {
+    marginBottom: 12,
+  },
+  commentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  avatar: {
+    backgroundColor: '#4e73df',
+    marginRight: 12,
+  },
+  username: {
+    fontWeight: 'bold',
+  },
+  date: {
+    fontSize: 12,
+    color: '#858796',
+  },
+  commentText: {
+    fontSize: 16,
+  },
+  emptyState: {
+    padding: 40,
+    alignItems: 'center',
+  },
+  emptyText: {
+    color: '#858796',
+    textAlign: 'center',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    padding: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#e3e6f0',
+    backgroundColor: '#fff',
+  },
   input: {
+    flex: 1,
+    height: 40,
     borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 8,
-    padding: 10,
-    marginTop: 20,
-    marginBottom: 10,
+    borderColor: '#e3e6f0',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    marginRight: 12,
+    backgroundColor: '#f8f9fc',
+  },
+  sendButton: {
+    backgroundColor: '#4e73df',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#d1d3e2',
+  },
+  sendButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
 });
