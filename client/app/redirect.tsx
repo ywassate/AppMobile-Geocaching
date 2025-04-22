@@ -1,4 +1,4 @@
-// ✅ app/index.tsx (redirige après splash)
+// ✅ app/redirect.tsx (redirige après splash)
 import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';

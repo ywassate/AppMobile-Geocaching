@@ -23,7 +23,7 @@ exports.getComments = async (req, res) => {
   const comments = db.collection('comments');
 
   const result = await comments
-    .find({ cache: new ObjectId(String(eq.params.cacheId)) })
+    .find({ cache: new ObjectId(String(req.params.cacheId)) })
     .sort({ createdAt: -1 })
     .toArray();
 

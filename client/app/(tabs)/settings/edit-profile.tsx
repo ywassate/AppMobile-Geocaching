@@ -1,3 +1,5 @@
+//app/(tabs)/settings/edit-profile.tsx
+
 import { useState, useEffect } from 'react';
 import {
   View,

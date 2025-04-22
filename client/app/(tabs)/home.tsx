@@ -1,3 +1,5 @@
+//app/(tabs)/home.tsx
+
 import { View, Text, StyleSheet, ImageBackground } from 'react-native';
 import { useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';

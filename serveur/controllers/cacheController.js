@@ -135,49 +135,50 @@ exports.getCachesFoundByUser = async (req, res) => {
   }
 };
 
-// Ajouter un log/commentaire à une cache (trouvée ou non)
-const { ObjectId } = require('mongodb');
+
 
 exports.addCacheLog = async (req, res) => {
   const db = getDB();
   const caches = db.collection('caches');
 
   const { cacheId } = req.params;
-  const { found, comment } = req.body;
+  const { found, comment, location } = req.body;
 
-  // ✅ Vérification que l'ID est un ObjectId Mongo valide
+  console.log("🟡 Requête reçue pour addCacheLog");
+  console.log("📦 Params.cacheId  =", cacheId);
+  console.log("📦 Body.found      =", found);
+  console.log("📦 Body.comment    =", comment);
+  console.log("📦 Body.location   =", location);
+  console.log("👤 Utilisateur     =", req.user.id);
+
   if (!ObjectId.isValid(cacheId)) {
-    return res.status(400).json({ msg: 'Identifiant de cache invalide' });
+    return res.status(400).json({ msg: 'cacheId invalide' });
   }
 
-  // ✅ Vérifie que `found` est bien un booléen
   if (typeof found !== 'boolean') {
-    return res.status(400).json({ msg: '`found` doit être un booléen (true ou false)' });
+    return res.status(400).json({ msg: '`found` doit être un booléen' });
   }
 
-  try {
-    const logEntry = {
-      user: new ObjectId(req.user.id),        // ID de l'utilisateur connecté
-      found,
-      comment: comment || '',                 // commentaire facultatif
-      date: new Date()                        // timestamp du log
-    };
+  const logEntry = {
+    user: new ObjectId(String(req.user.id)),
+    found,
+    comment,
+    date: new Date(),
+  };
 
-    const result = await caches.updateOne(
-      { _id: new ObjectId(cacheId) },         // filtre par ID de la cache
-      { $push: { logs: logEntry } }           // ajoute le log dans le tableau `logs`
-    );
-
-    if (result.modifiedCount === 0) {
-      return res.status(404).json({ msg: 'Cache non trouvée' });
-    }
-
-    return res.status(201).json({ msg: 'Log ajouté avec succès' });
-  } catch (error) {
-    console.error('Erreur lors de l\'ajout du log :', error);
-    return res.status(500).json({ msg: 'Erreur serveur' });
+  // Si trouvé, on ajoute la localisation (optionnelle pour commentaire simple)
+  if (found && location) {
+    logEntry.location = location;
   }
+
+  await caches.updateOne(
+    { _id: new ObjectId(cacheId) },
+    { $push: { logs: logEntry } }
+  );
+
+  res.status(201).json({ msg: "Log ajouté avec succès" });
 };
+
 
 
 // Mettre à jour une cache existante
@@ -276,4 +277,44 @@ exports.deleteCache = async (req, res) => {
 
   await caches.deleteOne({ _id: new ObjectId(String(id)) });
   res.json({ msg: 'Cache supprimée avec succès' });
+};
+
+// Récupérer uniquement les logs.commentaire pour une cache
+exports.getCacheComments = async (req, res) => {
+  const db = getDB();
+  const caches = db.collection('caches');
+  const { cacheId } = req.params;
+
+  try {
+    const cache = await caches.findOne({ _id: new ObjectId(cacheId) });
+    if (!cache) return res.status(404).json({ message: "Cache non trouvée" });
+
+    const logs = cache.logs || [];
+
+    const commentLogs = logs.filter(log =>
+      log.found === false && log.comment && log.comment.trim() !== ''
+    ).map(log => ({
+      _id: log._id || new ObjectId(), // si pas d’_id dans log
+      user: log.user,
+      comment: log.comment,
+      createdAt: log.date,
+    }));
+
+    // Peupler les utilisateurs (optionnel)
+    const users = await db.collection('users').find({
+      _id: { $in: commentLogs.map(log => log.user) }
+    }).toArray();
+
+    const userMap = Object.fromEntries(users.map(u => [u._id.toString(), u]));
+
+    const enriched = commentLogs.map(log => ({
+      ...log,
+      user: userMap[log.user.toString()] || {},
+    }));
+
+    res.json(enriched);
+  } catch (err) {
+    console.error("❌ Erreur getCacheComments:", err);
+    res.status(500).json({ message: "Erreur serveur" });
+  }
 };

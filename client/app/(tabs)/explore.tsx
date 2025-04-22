@@ -220,28 +220,40 @@ export default function ExploreScreen() {
   const handleMarkFound = async (cacheId: string) => {
     const token = await getToken();
     try {
+      if (!userLocation) {
+        Alert.alert('Erreur', 'Position utilisateur inconnue.');
+        return;
+      }
+  
       const response = await fetch(`${API_URL}/api/caches/${cacheId}/logs`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ found: true, comment: 'Trouvée !' }),
+        body: JSON.stringify({
+          found: true,
+          comment: 'Trouvée !',
+          location: userLocation
+        }),
       });
   
-      if (!response.ok) return;
+      if (!response.ok) {
+        console.error('❌ Erreur serveur:', await response.text());
+        return;
+      }
   
-      console.log('✅ Marquage réussi, on affiche la popup');
+      console.log('✅ Marquage réussi');
       showSuccessPopup();
-  
-      await fetchCaches(); // ✅ Rechargement des pins
+      await fetchCaches();
   
     } catch (err) {
-      console.error('❌ Erreur lors du marquage comme trouvée :', err);
+      console.error('❌ Erreur réseau lors du marquage:', err);
+      Alert.alert('Erreur', 'Problème réseau');
     }
   };
   
-  if (loading) return <ActivityIndicator size="large" style={{ marginTop: 100 }} />;
+  
 
   return (
     <SafeAreaView style={styles.container}>

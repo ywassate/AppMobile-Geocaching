@@ -1,4 +1,4 @@
-// ✅ app/settings/change-password.tsx
+// ✅ app/(tabs)/settings/change-password.tsx
 import { useState } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
 import { Text, TextInput, Button } from 'react-native-paper';

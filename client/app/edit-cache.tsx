@@ -1,4 +1,4 @@
-//app/(tabs)/edit-cache.tsx
+//app/edit-cache.tsx
 
 import { useState } from 'react';
 import { View, TextInput, Button, Alert, StyleSheet } from 'react-native';

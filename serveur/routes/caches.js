@@ -18,6 +18,9 @@ router.get('/found', authMiddleware, cacheController.getCachesFoundByUser);
 // Ajouter log (trouvée/non trouvée + commentaire)
 router.post('/:cacheId/logs', authMiddleware, cacheController.addCacheLog);
 
+router.get('/:cacheId/comments', authMiddleware, cacheController.getCacheComments);
+
+
 // Modifier cache
 router.put('/:id', authMiddleware, cacheController.updateCache);
 
