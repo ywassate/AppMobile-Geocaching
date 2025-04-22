@@ -1,8 +1,7 @@
-// app/comments/[cacheId].tsx
 import { useEffect, useState } from 'react';
 import { View, StyleSheet, FlatList, TextInput, TouchableOpacity, ActivityIndicator, Alert, Text } from 'react-native';
 import { Card, Avatar, Button } from 'react-native-paper';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams } from 'expo-router';
 import { getToken } from '../../hooks/useToken';
 import { API_URL } from '../../constants/api';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,29 +12,28 @@ type Comment = {
     username?: string;
     email?: string;
   };
-  text: string;
+  comment: string;
   createdAt: string;
 };
 
 export default function CommentsScreen() {
-  const { cacheId } = useLocalSearchParams();
+  const params = useLocalSearchParams();
+  const cacheId = params.cacheId as string;
+
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
 
   useEffect(() => {
-    fetchComments();
+    if (cacheId) fetchComments();
   }, [cacheId]);
 
   const fetchComments = async () => {
-    if (!cacheId) return;
-    
     setLoading(true);
     setError(null);
-    
+
     const token = await getToken();
     if (!token) {
       setError("Vous devez être connecté pour voir les commentaires");
@@ -44,25 +42,21 @@ export default function CommentsScreen() {
     }
 
     try {
-      console.log(`Chargement des commentaires pour la cache: ${cacheId}`);
-      
-      const response = await fetch(`${API_URL}/api/caches/${cacheId}/logs`, {
+      const response = await fetch(`${API_URL}/api/comments/${cacheId}`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
-      // Debug
       const textResponse = await response.text();
-      console.log("Réponse brute:", textResponse);
-      
+      console.log("🟢 Réponse brute (GET comments) :", textResponse);
+
       let data;
       try {
-        // Tentative de parser la réponse comme JSON
         data = JSON.parse(textResponse);
       } catch (parseError) {
-        console.error("Erreur de parsing JSON:", parseError);
-        setError(`Réponse invalide du serveur: ${textResponse.substring(0, 100)}...`);
+        console.error("❌ Erreur de parsing JSON:", parseError);
+        setError("Réponse invalide du serveur.");
         setLoading(false);
         return;
       }
@@ -73,18 +67,17 @@ export default function CommentsScreen() {
         return;
       }
 
-      // Verification que data est un tableau
-      if (!Array.isArray(data)) {
-        console.error("Les données reçues ne sont pas un tableau:", data);
+      const logs = Array.isArray(data.logs) ? data.logs : data;
+      if (!Array.isArray(logs)) {
         setError("Format de données incorrect");
         setLoading(false);
         return;
       }
 
-      setComments(data);
+      setComments(logs);
       setError(null);
     } catch (err) {
-      console.error("Erreur réseau:", err);
+      console.error("❌ Erreur réseau:", err);
       setError("Impossible de se connecter au serveur");
     } finally {
       setLoading(false);
@@ -93,10 +86,10 @@ export default function CommentsScreen() {
 
   const addComment = async () => {
     if (!newComment.trim()) return;
-    
+
     setSubmitting(true);
     setError(null);
-    
+
     const token = await getToken();
     if (!token) {
       Alert.alert('Erreur', 'Vous devez être connecté pour ajouter un commentaire');
@@ -112,20 +105,20 @@ export default function CommentsScreen() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          text: newComment,
-          found: false // Commentaire simple, pas un marquage comme trouvé
+          comment: newComment, // ✅ champs corrigé
+          found: false,
         }),
       });
 
       const textResponse = await response.text();
-      console.log("Réponse d'ajout de commentaire:", textResponse);
-      
+      console.log("🟢 Réponse ajout commentaire :", textResponse);
+
       let data;
       try {
         data = JSON.parse(textResponse);
       } catch (parseError) {
-        console.error("Erreur de parsing JSON:", parseError);
-        setError(`Réponse invalide du serveur: ${textResponse.substring(0, 100)}...`);
+        console.error("❌ Erreur de parsing JSON:", parseError);
+        setError("Réponse invalide du serveur.");
         setSubmitting(false);
         return;
       }
@@ -137,9 +130,9 @@ export default function CommentsScreen() {
       }
 
       setNewComment('');
-      fetchComments(); // Rafraîchir la liste des commentaires
+      fetchComments(); // recharger
     } catch (err) {
-      console.error("Erreur réseau:", err);
+      console.error("❌ Erreur réseau:", err);
       setError("Impossible de se connecter au serveur");
     } finally {
       setSubmitting(false);
@@ -181,7 +174,7 @@ export default function CommentsScreen() {
                     <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
                   </View>
                 </View>
-                <Text style={styles.commentText}>{item.text}</Text>
+                <Text style={styles.commentText}>{item.comment}</Text>
               </Card.Content>
             </Card>
           )}
@@ -217,76 +210,28 @@ export default function CommentsScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#f8f9fc',
-  },
+  container: { flex: 1, backgroundColor: '#f8f9fc' },
   header: {
     padding: 16,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e3e6f0',
   },
-  title: {
-    fontSize: 22,
-    fontWeight: 'bold',
-    color: '#4e73df',
-  },
-  subtitle: {
-    fontSize: 14,
-    color: '#858796',
-    marginTop: 4,
-  },
-  loader: {
-    marginTop: 40,
-  },
-  errorContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 20,
-  },
-  errorText: {
-    color: '#e74a3b',
-    textAlign: 'center',
-    marginBottom: 20,
-  },
-  retryButton: {
-    backgroundColor: '#4e73df',
-  },
-  commentsList: {
-    padding: 16,
-  },
-  commentCard: {
-    marginBottom: 12,
-  },
-  commentHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  avatar: {
-    backgroundColor: '#4e73df',
-    marginRight: 12,
-  },
-  username: {
-    fontWeight: 'bold',
-  },
-  date: {
-    fontSize: 12,
-    color: '#858796',
-  },
-  commentText: {
-    fontSize: 16,
-  },
-  emptyState: {
-    padding: 40,
-    alignItems: 'center',
-  },
-  emptyText: {
-    color: '#858796',
-    textAlign: 'center',
-  },
+  title: { fontSize: 22, fontWeight: 'bold', color: '#4e73df' },
+  subtitle: { fontSize: 14, color: '#858796', marginTop: 4 },
+  loader: { marginTop: 40 },
+  errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+  errorText: { color: '#e74a3b', textAlign: 'center', marginBottom: 20 },
+  retryButton: { backgroundColor: '#4e73df' },
+  commentsList: { padding: 16 },
+  commentCard: { marginBottom: 12 },
+  commentHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  avatar: { backgroundColor: '#4e73df', marginRight: 12 },
+  username: { fontWeight: 'bold' },
+  date: { fontSize: 12, color: '#858796' },
+  commentText: { fontSize: 16 },
+  emptyState: { padding: 40, alignItems: 'center' },
+  emptyText: { color: '#858796', textAlign: 'center' },
   inputContainer: {
     flexDirection: 'row',
     padding: 12,

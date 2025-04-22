@@ -136,6 +136,8 @@ exports.getCachesFoundByUser = async (req, res) => {
 };
 
 // Ajouter un log/commentaire à une cache (trouvée ou non)
+const { ObjectId } = require('mongodb');
+
 exports.addCacheLog = async (req, res) => {
   const db = getDB();
   const caches = db.collection('caches');
@@ -143,24 +145,40 @@ exports.addCacheLog = async (req, res) => {
   const { cacheId } = req.params;
   const { found, comment } = req.body;
 
-  if (typeof found !== 'boolean') {
-    return res.status(400).json({ msg: '`found` doit être un booléen' });
+  // ✅ Vérification que l'ID est un ObjectId Mongo valide
+  if (!ObjectId.isValid(cacheId)) {
+    return res.status(400).json({ msg: 'Identifiant de cache invalide' });
   }
 
-  const logEntry = {
-    user: new ObjectId(String(req.user.id)),
-    found,
-    comment,
-    date: new Date()
-  };
+  // ✅ Vérifie que `found` est bien un booléen
+  if (typeof found !== 'boolean') {
+    return res.status(400).json({ msg: '`found` doit être un booléen (true ou false)' });
+  }
 
-  await caches.updateOne(
-    { _id: new ObjectId(String(cacheId)) },
-    { $push: { logs: logEntry } }
-  );
+  try {
+    const logEntry = {
+      user: new ObjectId(req.user.id),        // ID de l'utilisateur connecté
+      found,
+      comment: comment || '',                 // commentaire facultatif
+      date: new Date()                        // timestamp du log
+    };
 
-  res.status(201).json({ msg: "Log ajouté avec succès" });
+    const result = await caches.updateOne(
+      { _id: new ObjectId(cacheId) },         // filtre par ID de la cache
+      { $push: { logs: logEntry } }           // ajoute le log dans le tableau `logs`
+    );
+
+    if (result.modifiedCount === 0) {
+      return res.status(404).json({ msg: 'Cache non trouvée' });
+    }
+
+    return res.status(201).json({ msg: 'Log ajouté avec succès' });
+  } catch (error) {
+    console.error('Erreur lors de l\'ajout du log :', error);
+    return res.status(500).json({ msg: 'Erreur serveur' });
+  }
 };
+
 
 // Mettre à jour une cache existante
 exports.updateCache = async (req, res) => {

@@ -3,7 +3,7 @@ const multer = require('multer');
 const path = require('path');
 
 const storage = multer.diskStorage({
-  destination: 'uploads/', // Crée ce dossier s’il n’existe pas
+  destination: 'uploads/', 
   filename: (req, file, cb) => {
     const uniqueName = 'avatar-' + Date.now() + path.extname(file.originalname);
     cb(null, uniqueName);
